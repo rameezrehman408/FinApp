@@ -1,0 +1,10 @@
+server:
+  address: ":8080"
+  mode: "debug"
+
+database:
+  url: "postgres://postgres:postgres@localhost:5432/finapp?sslmode=disable"
+
+log:
+  level: "info"
+  format: "console"
