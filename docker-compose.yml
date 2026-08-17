@@ -57,6 +57,19 @@ services:
     volumes:
       - ./config.yaml:/root/config.yaml:ro
 
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: finapp-web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:8080"
+    depends_on:
+      - api
+
+
 volumes:
   postgres_data:
   minio_data:
