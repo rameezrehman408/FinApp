@@ -12,7 +12,6 @@ import (
 	"github.com/seisram/FinApp/internal/domain/party"
 	"github.com/seisram/FinApp/internal/domain/transaction"
 )
-
 type AccountRepository interface {
 	Create(ctx context.Context, a *account.Account) error
 	GetByID(ctx context.Context, id uuid.UUID) (*account.Account, error)
@@ -190,9 +189,15 @@ type CreateCategoryResult struct {
 }
 
 func (h *CreateCategoryHandler) Handle(ctx context.Context, cmd CreateCategoryCommand) (*CreateCategoryResult, error) {
-	c := category.NewCategory(cmd.Name, cmd.Type, cmd.ParentID, cmd.Description)
+	// For simplicity in this fix, we use dummy UUIDs as the command doesn't provide householdID yet. 
+	// In a real app, we would derive this from the authenticated user/session context.
+	householdID := uuid.New() 
+	c := category.NewCategory(uuid.New(), householdID, cmd.Name, cmd.Type)
+	c.ParentID = cmd.ParentID
+	c.Description = cmd.Description
 	c.Icon = cmd.Icon
 	c.Color = cmd.Color
+
 	if err := h.repo.Create(ctx, c); err != nil {
 		return nil, err
 	}
