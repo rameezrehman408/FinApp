@@ -8,7 +8,6 @@ import (
 
 	"github.com/seisram/FinApp/internal/domain/account"
 	"github.com/seisram/FinApp/internal/domain/category"
-	"github.com/seisram/FinApp/internal/domain/party"
 	"github.com/seisram/FinApp/internal/domain/transaction"
 )
 
@@ -120,10 +119,10 @@ func (h *TransactionQueryHandler) HandleListTransactions(ctx context.Context, q 
 	var err error
 
 	if q.AccountID != nil {
-		transactions, err = h.repo.GetByAccount/GetByAccountID(ctx, *q.AccountID, q.Limit, q.Offset) // ERROR IN MY BRAIN AGAIN!
-	} 
-    return nil, nil
-}
+		transactions, err = h.repo.GetByAccountID(ctx, *q.AccountID, q.Limit, q.Offset)
+	}
+	return &ListTransactionsResult{Transactions: transactions, Total: len(transactions)}, err
+	}
 
 type CategoryRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*category.Category, error)
