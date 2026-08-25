@@ -1,9 +1,17 @@
 version: '3.8'
 
+# ============================================================
+# FinApp - Financial Application Docker Compose
+# ============================================================
+
 services:
+  # ------------------------------------------------------------
+  # PostgreSQL Database
+  # ------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: finapp-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -12,65 +20,128 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d finapp"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
-  minio:
-    image: minio/minio:latest
-    container_name: finapp-minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/data
-
+  # ------------------------------------------------------------
+  # Redis Cache & Session Store
+  # ------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: finapp-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-  api:
+  # ------------------------------------------------------------
+  # MinIO - Object Storage (receipts, invoices, documents)
+  # ------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: finapp-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "minio-server", "--health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ------------------------------------------------------------
+  # Go Backend Service
+  # ------------------------------------------------------------
+  finapp-api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: finapp-api
+    restart: unless-stopped
+    environment:
+      # Server settings
+      FINAPP_SERVER_ADDRESS: ":8080"
+      FINAPP_DATABASE_URL: "postgres://postgres:postgres@postgres:5432/finapp?sslmode=disable"
+      LOG_LEVEL: "info"
+      # Multi-tenancy
+      SERVER_MODE: "debug"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/root/config.yaml:ro
+      - ./internal:/app
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8080:8080"
-    environment:
-      FINAPP_SERVER_ADDRESS: ":8080"
-      FINAPP_DATABASE_URL: "postgres://postgres:postgres@postgres:5432/finapp?sslmode=disable"
-      FINAPP_LOG_LEVEL: "debug"
-    volumes:
-      - ./config.yaml:/root/config.yaml:ro
+      redis:
+        condition: service_healthy
+    networks:
+      - finapp-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
-  frontend:
+  # ------------------------------------------------------------
+  # Frontend (Next.js) - Optional - Uncomment if web app is implemented
+  # ------------------------------------------------------------
+  finapp-web:
     build:
-      context: ./web
+      context: .
       dockerfile: Dockerfile
     container_name: finapp-web
+    restart: unless-stopped
     ports:
       - "3000:3000"
-    environment:
-      NEXT_PUBLIC_API_URL: "http://localhost:8080"
     depends_on:
-      - api
+      - postgres
+      - redis
+    networks:
+      - finapp-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
-
+# ------------------------------------------------------------
+# Volumes
+# ------------------------------------------------------------
 volumes:
   postgres_data:
-  minio_data:
+    driver: local
   redis_data:
+    driver: local
+  minio_data:
+    driver: local
+
+# ------------------------------------------------------------
+# Networks
+# ------------------------------------------------------------
+networks:
+  finapp-network:
+    driver: bridge
+    ipam:
+      subnets:
+        - 172.20.0.0/16
